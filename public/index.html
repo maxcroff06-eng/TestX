@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SANSKAR FF - Premium Quiz v2</title>
+    
+    <!-- Socket.IO Client CDN -->
+    <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+    <style>
+        :root {
+            --bg-dark: #020b18;
+            --accent-cyan: #00f2ff;
+            --accent-blue: #0066ff;
+            --glass-white: rgba(255, 255, 255, 0.08);
+            --glass-border: rgba(255, 255, 255, 0.15);
+            --text-white: #ffffff;
+            --correct: #00ff88;
+            --wrong: #ff4d4d;
+            --gold: #ffd700;
+            --silver: #e0e0e0;
+            --bronze: #cd7f32;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Roboto, sans-serif; }
+        body { background: #020b18; color: var(--text-white); min-height: 100vh; overflow-x: hidden; }
+        
+        .bg-shapes { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; }
+        .shape { position: absolute; background: linear-gradient(45deg, var(--accent-blue), var(--accent-cyan)); filter: blur(100px); border-radius: 50%; opacity: 0.2; animation: float 15s infinite alternate; }
+
+        @keyframes float { from { transform: translate(0,0); } to { transform: translate(50px, 50px); } }
+
+        .container { width: 95%; max-width: 900px; margin: 40px auto; background: var(--glass-white); backdrop-filter: blur(20px); border: 1px solid var(--glass-border); border-radius: 30px; padding: 40px; box-shadow: 0 20px 50px rgba(0,0,0,0.4); position: relative; }
+
+        .big-title { font-size: 3.5rem; font-weight: 900; background: linear-gradient(to right, #fff, var(--accent-cyan)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-align: center; margin-bottom: 20px; letter-spacing: 8px; text-transform: uppercase; filter: drop-shadow(0 0 10px rgba(0,242,255,0.3)); }
+
+        #player-name-input {
+            width: 100%; max-width: 500px; height: 65px; margin: 20px auto; display: block;
+            background: rgba(255, 255, 255, 0.05); border: 2px solid var(--glass-border);
+            border-radius: 15px; color: #fff; font-size: 24px; font-weight: bold;
+            text-align: center; outline: none; transition: 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.5);
+        }
+        #player-name-input::placeholder { font-size: 20px; color: rgba(255,255,255,0.3); letter-spacing: 2px; }
+        #player-name-input:focus { border-color: var(--accent-cyan); box-shadow: 0 0 25px rgba(0, 242, 255, 0.5); background: rgba(255,255,255,0.1); transform: scale(1.02); }
+
+        .premium-btn { padding: 18px 45px; font-size: 1.1rem; font-weight: bold; background: linear-gradient(45deg, var(--accent-blue), var(--accent-cyan)); border: none; border-radius: 50px; color: white; cursor: pointer; transition: 0.3s; text-transform: uppercase; letter-spacing: 2px; box-shadow: 0 5px 15px rgba(0,102,255,0.3); margin: 10px; }
+        .premium-btn:hover { transform: translateY(-3px) scale(1.05); box-shadow: 0 0 30px var(--accent-cyan); }
+
+        #quiz-page, #result-page, #lobby-page, #join-entry-page, #online-menu-page, #online-join-page { display: none; }
+        .options-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 30px; }
+        .option { background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); padding: 25px; border-radius: 20px; cursor: pointer; transition: 0.2s; font-size: 1.2rem; }
+        .option:hover { background: rgba(255,255,255,0.1); border-color: var(--accent-cyan); }
+        .option.correct { background: rgba(0, 255, 136, 0.2) !important; border-color: var(--correct) !important; animation: pop 0.4s; }
+        .option.wrong { background: rgba(255, 77, 77, 0.2) !important; border-color: var(--wrong) !important; animation: shake 0.4s; }
+        
+        @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-10px); } 75% { transform: translateX(10px); } }
+        @keyframes pop { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
+
+        .dashboard-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 15px; margin: 30px 0; }
+        .dash-card { background: rgba(0,0,0,0.3); padding: 20px; border-radius: 20px; border: 1px solid var(--glass-border); text-align: center; transition: 0.3s; }
+        .dash-card:hover { transform: translateY(-5px); border-color: var(--accent-cyan); }
+        .dash-val { font-size: 1.8rem; font-weight: 900; color: var(--accent-cyan); display: block; }
+        .dash-label { font-size: 0.8rem; opacity: 0.6; text-transform: uppercase; letter-spacing: 1px; }
+
+        .grade-badge { font-size: 4rem; font-weight: 900; text-align: center; margin: 20px 0; text-shadow: 0 0 20px rgba(0,242,255,0.5); }
+
+        .leaderboard-table { width: 100%; border-collapse: separate; border-spacing: 0 10px; margin-top: 20px; }
+        .lb-row { background: rgba(255,255,255,0.03); transition: 0.3s; border-radius: 15px; }
+        .lb-row.me { border: 2px solid var(--accent-cyan); background: rgba(0,242,255,0.1); }
+        .lb-row td { padding: 15px; text-align: center; }
+        .lb-row td:first-child { border-radius: 15px 0 0 15px; font-weight: 900; }
+        .lb-row td:last-child { border-radius: 0 15px 15px 0; }
+        
+        #live-rank-box {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            width: 220px;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--accent-cyan);
+            border-radius: 15px;
+            padding: 10px;
+            z-index: 1000;
+            display: none;
+            max-height: 250px;
+            overflow-y: auto;
+            box-shadow: 0 0 20px rgba(0, 242, 255, 0.2);
+        }
+
+        #timer-display {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: var(--accent-cyan);
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--accent-cyan);
+            padding: 5px 15px;
+            border-radius: 12px;
+            z-index: 1001;
+            box-shadow: 0 0 15px rgba(0, 242, 255, 0.2);
+        }
+
+        .rank-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.85rem;
+            padding: 4px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .rank-row.highlight { color: var(--accent-cyan); font-weight: bold; }
+
+        #winner-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9);
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            text-align: center;
+        }
+        .winner-name { color: #ff0000; font-size: 5rem; font-weight: 900; text-transform: uppercase; animation: zoomIn 0.5s; margin-top: 20px; }
+        .trophy { font-size: 10rem; filter: drop-shadow(0 0 20px gold); animation: float 2s infinite alternate; }
+        .crown { font-size: 4rem; position: absolute; margin-top: -120px; animation: bounce 1s infinite alternate; }
+        @keyframes zoomIn { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        @keyframes bounce { from { transform: translateY(0); } to { transform: translateY(-20px); } }
+
+        @media (max-width: 600px) {
+            .options-grid { grid-template-columns: 1fr; }
+            .big-title { font-size: 2.2rem; }
+            .lb-hide { display: none; }
+            .winner-name { font-size: 2.5rem; }
+            #timer-display { font-size: 1.4rem; padding: 4px 10px; }
+            #live-rank-box { width: 160px; }
+        }
+    </style>
+</head>
+<body oncontextmenu="return false;">
+
+    <div id="live-rank-box">
+        <div style="font-size: 0.7rem; color: var(--accent-cyan); text-align: center; border-bottom: 1px solid var(--accent-cyan); padding-bottom: 5px; margin-bottom: 5px;">LIVE RANKING</div>
+        <div id="live-rank-list"></div>
+    </div>
+
+    <div id="winner-overlay">
+        <div class="crown">👑</div>
+        <div class="trophy">🏆</div>
+        <h1 class="winner-name" id="winner-display-name">WINNER</h1>
+        <div style="font-size: 1.5rem; color: gold; margin-top: 10px;">RANK #1</div>
+    </div>
+
+    <div class="bg-shapes">
+        <div class="shape" style="width: 300px; height: 300px; top: -100px; left: -100px;"></div>
+        <div class="shape" style="width: 400px; height: 400px; bottom: -150px; right: -150px;"></div>
+    </div>
+
+    <div class="container" id="main-app-container">
+        
+        <!-- START PAGE -->
+        <div id="start-page">
+            <h1 class="big-title">SANSKAR FF</h1>
+            <div style="text-align: center;">
+                <img id="my-avatar" src="https://api.dicebear.com/7.x/adventurer/svg?seed=Sanskar" style="width: 100px; border-radius: 50%; border: 3px solid var(--accent-cyan); margin-bottom: 10px;">
+            </div>
+            <input type="text" id="player-name-input" placeholder="ENTER YOUR NAME" maxlength="15">
+            <div style="text-align: center;">
+                <button class="premium-btn" onclick="startQuiz('solo')">SOLO MATCH</button>
+                <div style="margin-top: 20px;">
+                    <p style="margin-bottom: 10px; opacity: 0.6; font-size: 0.8rem; letter-spacing: 2px;">LOCAL MULTIPLAYER (LAN)</p>
+                    <button class="premium-btn" style="background: #6e00ff;" onclick="initHost()">HOST ROOM</button>
+                    <button class="premium-btn" style="background: #00a8ff;" onclick="showJoinEntry()">JOIN ROOM</button>
+                </div>
+                <div style="margin-top: 30px; border-top: 1px solid var(--glass-border); padding-top: 20px;">
+                    <button class="premium-btn" style="background: linear-gradient(45deg, #ff0077, #ff00ff); width: 100%; max-width: 400px;" onclick="showOnlineMenu()">ONLINE MULTIPLAYER</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ONLINE MENU -->
+        <div id="online-menu-page">
+            <h2 class="big-title" style="font-size: 2rem;">ONLINE MODE</h2>
+            <div style="text-align: center;">
+                <p style="margin-bottom: 30px; opacity: 0.8;">Play with anyone over the internet</p>
+                <button class="premium-btn" style="background: #6e00ff; display: block; width: 100%; margin: 10px auto;" onclick="initOnlineHost()">CREATE ONLINE ROOM</button>
+                <button class="premium-btn" style="background: #00a8ff; display: block; width: 100%; margin: 10px auto;" onclick="showOnlineJoin()">JOIN ONLINE ROOM</button>
+                <button class="premium-btn" style="background:transparent; border:1px solid white; margin-top: 30px;" onclick="location.reload()">BACK</button>
+            </div>
+        </div>
+
+        <!-- ONLINE JOIN -->
+        <div id="online-join-page">
+            <h2 class="big-title" style="font-size: 2rem;">JOIN ONLINE</h2>
+            <input type="text" id="online-room-code-input" placeholder="6-DIGIT CODE" maxlength="6" style="width:100%; max-width:300px; padding:15px; border-radius:50px; background:rgba(0,0,0,0.3); color:white; border:1px solid #ff0077; text-align:center; display:block; margin:20px auto;">
+            <div style="text-align: center;">
+                <button class="premium-btn" style="background: #ff0077;" onclick="joinOnlineByCode()">JOIN NOW</button>
+                <button class="premium-btn" style="background:transparent; border:1px solid white;" onclick="showOnlineMenu()">BACK</button>
+            </div>
+        </div>
+
+        <!-- LAN JOIN -->
+        <div id="join-entry-page">
+            <h2 class="big-title" style="font-size: 2rem;">JOIN ROOM</h2>
+            <input type="text" id="room-code-input" placeholder="6-DIGIT CODE" maxlength="6" style="width:100%; max-width:300px; padding:15px; border-radius:50px; background:rgba(0,0,0,0.3); color:white; border:1px solid var(--accent-cyan); text-align:center; display:block; margin:20px auto;">
+            <div style="text-align: center;">
+                <button class="premium-btn" onclick="joinByCode()">JOIN NOW</button>
+                <button class="premium-btn" style="background:transparent; border:1px solid white;" onclick="location.reload()">BACK</button>
+            </div>
+        </div>
+
+        <!-- LOBBY -->
+        <div id="lobby-page">
+            <h2 class="big-title" style="font-size: 2rem;">ROOM LOBBY</h2>
+            <div style="text-align: center;">
+                <div id="room-code-display" style="font-size: 2.5rem; color: var(--accent-cyan); font-weight: 800; letter-spacing: 5px;">------</div>
+                <div id="qrcode" style="background: white; padding: 10px; display: inline-block; margin: 20px 0; border-radius: 10px;"></div>
+                <div id="lobby-players" style="display: flex; flex-wrap: wrap; justify-content: center; gap: 15px; margin: 20px 0;"></div>
+                <div id="host-controls" style="display: none;">
+                    <button class="premium-btn" onclick="startMultiplayerGame()">START MATCH</button>
+                </div>
+                <p>Waiting for players...</p>
+            </div>
+        </div>
+
+        <!-- QUIZ PAGE -->
+        <div id="quiz-page">
+            <div id="timer-display">00:00</div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <div style="padding: 10px 20px; background: rgba(0,0,0,0.2); border-radius: 12px; border-left: 4px solid var(--accent-cyan);">Q: <span id="q-counter">1/10</span></div>
+            </div>
+            <div style="width: 100%; height: 8px; background: rgba(255,255,255,0.1); border-radius: 10px; overflow: hidden; margin-bottom: 30px;">
+                <div id="progress-bar" style="height: 100%; width: 0%; background: linear-gradient(to right, var(--accent-blue), var(--accent-cyan)); transition: 0.4s;"></div>
+            </div>
+            <h2 id="question-text" style="min-height: 100px; font-size: 1.5rem; line-height: 1.4;">Question...</h2>
+            <div class="options-grid" id="options-container"></div>
+            <div style="display: flex; justify-content: space-between; margin-top: 40px;">
+                <button class="premium-btn" style="background: rgba(255,255,255,0.1);" onclick="prevQuestion()">PREVIOUS</button>
+                <button class="premium-btn" onclick="skipQuestion()">SKIP</button>
+            </div>
+            <div id="palette" style="display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 30px;"></div>
+        </div>
+
+        <!-- RESULT PAGE -->
+        <div id="result-page">
+            <h1 class="big-title">RESULT</h1>
+            <div id="grade-container" class="grade-badge">A+</div>
+            <div class="dashboard-grid">
+                <div class="dash-card"><span class="dash-val" id="res-rank">#1</span><span class="dash-label">Rank</span></div>
+                <div class="dash-card"><span class="dash-val" id="res-score">0</span><span class="dash-label">Score</span></div>
+                <div class="dash-card"><span class="dash-val" id="res-correct">0</span><span class="dash-label">Correct</span></div>
+                <div class="dash-card"><span class="dash-val" id="res-accuracy">0%</span><span class="dash-label">Accuracy</span></div>
+                <div class="dash-card"><span class="dash-val" id="res-time">0s</span><span class="dash-label">Time</span></div>
+            </div>
+            <div id="leaderboard-section">
+                <h3 style="text-align: center; color: var(--accent-cyan); margin: 40px 0 10px 0;">LEADERBOARD</h3>
+                <table class="leaderboard-table">
+                    <thead>
+                        <tr style="color: rgba(255,255,255,0.5); font-size: 0.8rem; text-transform: uppercase;">
+                            <th>Rank</th>
+                            <th>Player</th>
+                            <th>Score</th>
+                            <th class="lb-hide">Correct</th>
+                            <th class="lb-hide">Accuracy</th>
+                            <th>Time</th>
+                        </tr>
+                    </thead>
+                    <tbody id="leaderboard-body"></tbody>
+                </table>
+            </div>
+            <div style="text-align: center; margin-top: 40px;">
+                <button class="premium-btn" onclick="reviewQuiz()">REVIEW ANSWERS</button>
+                <button class="premium-btn" style="background: var(--wrong);" onclick="location.reload()">RESTART</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const TEST_TIME = 1200;
+        const ONLINE_SERVER_URL = "https://sanskar-quiz-server.onrender.com";
+
+        const quizDataRaw = `
+Q1
+'श्रम विभाजन और जाति प्रथा' पाठ के लेखक कौन हैं?
+A. महात्मा गांधी
+B. डॉ. भीमराव अंबेडकर
+C. प्रेमचंद
+D. रामधारी सिंह दिनकर
+ANSWER: B
+
+Q2
+बाबा साहेब भीमराव अंबेडकर का जन्म कब हुआ था?
+A. 14 अप्रैल, 1891 ई.
+B. 20 अप्रैल, 1892 ई.
+C. 24 अप्रैल, 1893 ई.
+D. 28 अप्रैल, 1894 ई.
+ANSWER: A
+
+Q3
+बाबा साहेब भीमराव अंबेडकर का जन्म किस राज्य में हुआ था?
+A. बिहार
+B. उत्तर प्रदेश
+C. मध्य प्रदेश
+D. बंगाल
+ANSWER: C
+`;
+
+        const AudioEngine = (() => {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const playOsc = (freq, type, vol, start, dur) => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, start);
+                gain.gain.setValueAtTime(vol, start);
+                gain.gain.exponentialRampToValueAtTime(0.01, start + dur);
+                osc.connect(gain); gain.connect(ctx.destination);
+                osc.start(start); osc.stop(start + dur);
+            };
+            return {
+                click: () => playOsc(600, 'sine', 0.1, ctx.currentTime, 0.1),
+                correct: () => { playOsc(800, 'sine', 0.2, ctx.currentTime, 0.3); playOsc(1200, 'sine', 0.1, ctx.currentTime + 0.05, 0.2); },
+                wrong: () => { playOsc(200, 'sawtooth', 0.2, ctx.currentTime, 0.4); if(navigator.vibrate) navigator.vibrate(200); },
+                victory: () => { [440, 554, 659, 880, 1108].forEach((f, i) => playOsc(f, 'sine', 0.1, ctx.currentTime + (i*0.1), 0.6)); }
+            };
+        })();
+
+        let questions = [], currentIndex = 0, userAnswers = {}, playerName = "";
+        let timerInterval, timeRemaining = 0, startTime, isReviewMode = false;
+        let isMultiplayer = false, socket, currentRoom = "", myScore = 0, myCorrectCount = 0, livePlayers = [];
+
+        function getSortedRankings(players) {
+            return [...players].sort((a, b) => (b.score !== a.score) ? (b.score - a.score) : ((a.totalTime || 0) - (b.totalTime || 0)));
+        }
+
+        document.getElementById('player-name-input').oninput = function() {
+            playerName = this.value.trim();
+            document.getElementById('my-avatar').src = `https://api.dicebear.com/7.x/adventurer/svg?seed=${playerName || 'Sanskar'}`;
+        };
+
+        function parseQuestions() {
+            const blocks = quizDataRaw.trim().split(/\n\s*\n/);
+            questions = blocks.map(block => {
+                const lines = block.trim().split('\n');
+                const options = {}; let answer = '';
+                let questionText = lines[0].trim().replace(/^Q?\d+\.?\s*/i, '').trim();
+                lines.forEach(l => {
+                    const optMatch = l.match(/^\s*([A-D])\.\s*(.*)/i);
+                    if (optMatch) options[optMatch[1].toUpperCase()] = optMatch[2].trim();
+                    if (l.match(/^(Answer|ANS|ANSWER):/i)) answer = l.split(':')[1].trim().toUpperCase();
+                });
+                return { question: questionText, options, answer };
+            });
+        }
+
+        function startQuiz(mode) {
+            if(mode === 'multi') isMultiplayer = true;
+            parseQuestions();
+            document.querySelectorAll('#start-page, #join-entry-page, #lobby-page, #online-menu-page, #online-join-page').forEach(p => p.style.display = 'none');
+            document.getElementById('quiz-page').style.display = 'block';
+            document.getElementById('live-rank-box').style.display = 'block';
+            window.scrollTo(0,0);
+            timeRemaining = TEST_TIME; startTime = Date.now(); myScore = 0; myCorrectCount = 0;
+            if(!isMultiplayer) livePlayers = [{ name: playerName || "You", score: 0, totalTime: 0, avatar: `https://api.dicebear.com/7.x/adventurer/svg?seed=${playerName || 'Sanskar'}` }];
+            updateLiveRankUI(); renderPalette(); showQuestion(0); startTimer();
+        }
+
+        function updateLiveRankUI() {
+            const sorted = getSortedRankings(livePlayers);
+            document.getElementById('live-rank-list').innerHTML = sorted.map((p, i) => `
+                <div class="rank-row ${p.name === (playerName || "You") ? 'highlight' : ''}">
+                    <span>#${i+1} ${p.name}</span><span>${p.score}</span>
+                </div>`).join('');
+        }
+
+        function showQuestion(index) {
+            currentIndex = index; const q = questions[index];
+            document.getElementById('q-counter').innerText = `${index + 1}/${questions.length}`;
+            document.getElementById('question-text').innerText = q.question;
+            document.getElementById('progress-bar').style.width = `${((index + 1) / questions.length) * 100}%`;
+            const container = document.getElementById('options-container'); container.innerHTML = '';
+            ['A', 'B', 'C', 'D'].forEach(key => {
+                const div = document.createElement('div'); div.className = 'option';
+                if(userAnswers[index] === key) div.classList.add('selected');
+                div.innerHTML = `<b>${key}.</b> ${q.options[key]}`;
+                if (isReviewMode) {
+                    if (key === q.answer) div.classList.add('correct');
+                    if (userAnswers[index] === key && key !== q.answer) div.classList.add('wrong');
+                    div.style.pointerEvents = 'none';
+                } else { div.onclick = () => selectOption(key, div); }
+                container.appendChild(div);
+            });
+            document.querySelectorAll('.palette-item').forEach(p => p.style.border = "none");
+            if(document.getElementById(`pal-${index}`)) document.getElementById(`pal-${index}`).style.border = "2px solid var(--accent-cyan)";
+        }
+
+        function selectOption(key, el) {
+            const isCorrect = key === questions[currentIndex].answer;
+            const timeTakenNow = (Date.now() - startTime) / 1000;
+            userAnswers[currentIndex] = key;
+            if (isCorrect) { AudioEngine.correct(); el.classList.add('correct'); myScore += 25; myCorrectCount++; document.getElementById(`pal-${currentIndex}`).style.background = "var(--correct)"; }
+            else { AudioEngine.wrong(); el.classList.add('wrong'); document.getElementById(`pal-${currentIndex}`).style.background = "var(--wrong)"; }
+            if(isMultiplayer) socket.emit('submit-answer', { room: currentRoom, isCorrect, score: myScore, totalTime: timeTakenNow, correctAnswers: myCorrectCount });
+            else { const me = livePlayers[0]; me.score = myScore; me.totalTime = timeTakenNow; updateLiveRankUI(); }
+            setTimeout(nextQuestion, 600);
+        }
+
+        function finishQuiz() {
+            clearInterval(timerInterval);
+            if(isMultiplayer) socket.emit("finish-game", currentRoom);
+            document.getElementById('quiz-page').style.display = 'none';
+            document.getElementById('live-rank-box').style.display = 'none';
+            document.getElementById('result-page').style.display = 'block';
+            const totalTime = ((Date.now() - startTime) / 1000);
+            const accuracy = Math.round((myCorrectCount / questions.length) * 100);
+            document.getElementById('res-score').innerText = myScore;
+            document.getElementById('res-correct').innerText = myCorrectCount;
+            document.getElementById('res-accuracy').innerText = accuracy + "%";
+            document.getElementById('res-time').innerText = totalTime.toFixed(1) + "s";
+            const sortedBoard = getSortedRankings(livePlayers);
+            const myRank = sortedBoard.findIndex(p => p.name === (playerName || "You")) + 1;
+            document.getElementById('res-rank').innerText = "#" + myRank;
+            if(myRank === 1) triggerWinnerCelebration();
+            else if(accuracy >= 40) { AudioEngine.victory(); confetti(); }
+            renderLeaderboard(sortedBoard);
+        }
+
+        function triggerWinnerCelebration() {
+            document.getElementById('winner-display-name').innerText = playerName || "YOU";
+            document.getElementById('winner-overlay').style.display = 'flex';
+            AudioEngine.victory();
+            const end = Date.now() + 3000;
+            (function frame() { confetti({ particleCount: 5, angle: 60, spread: 55, origin: { x: 0 } }); confetti({ particleCount: 5, angle: 120, spread: 55, origin: { x: 1 } }); if (Date.now() < end) requestAnimationFrame(frame); }());
+            setTimeout(() => document.getElementById('winner-overlay').style.display = 'none', 4000);
+        }
+
+        function renderLeaderboard(board) {
+            document.getElementById('leaderboard-body').innerHTML = board.map((p, i) => `
+                <tr class="lb-row ${p.name === (playerName || "You") ? 'me' : ''}">
+                    <td>${i+1}</td><td><img src="${p.avatar}" style="width:30px; border-radius:50%; vertical-align:middle; margin-right:8px;"> ${p.name}</td>
+                    <td>${p.score}</td><td class="lb-hide">${p.correct || p.correctAnswers || 0}</td>
+                    <td class="lb-hide">${p.accuracy || Math.round(((p.correct||p.correctAnswers||0)/questions.length)*100)}%</td><td>${(p.totalTime || 0).toFixed(1)}s</td>
+                </tr>`).join('');
+        }
+
+        function renderPalette() {
+            const pal = document.getElementById('palette'); pal.innerHTML = '';
+            questions.forEach((_, i) => {
+                const item = document.createElement('div'); item.className = 'palette-item';
+                item.style = "width:35px; height:35px; background:rgba(255,255,255,0.1); border-radius:8px; display:flex; align-items:center; justify-content:center; cursor:pointer;";
+                item.id = `pal-${i}`; item.innerText = i + 1;
+                item.onclick = () => { AudioEngine.click(); showQuestion(i); }; pal.appendChild(item);
+            });
+        }
+
+        function startTimer() {
+            timerInterval = setInterval(() => {
+                if(timeRemaining <= 0) return finishQuiz();
+                timeRemaining--; let m = Math.floor(timeRemaining / 60), s = timeRemaining % 60;
+                document.getElementById('timer-display').innerText = `${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
+            }, 1000);
+        }
+
+        function nextQuestion() { (currentIndex < questions.length - 1) ? showQuestion(currentIndex + 1) : finishQuiz(); }
+        function prevQuestion() { if (currentIndex > 0) showQuestion(currentIndex - 1); }
+        function skipQuestion() { AudioEngine.click(); nextQuestion(); }
+
+        // --- LAN MULTIPLAYER ---
+        function initHost() {
+            playerName = document.getElementById('player-name-input').value.trim();
+            if(!playerName) return alert("Enter Name");
+            socket = io(); setupSocketListeners();
+            socket.emit('create-room', { name: playerName, avatar: `https://api.dicebear.com/7.x/adventurer/svg?seed=${playerName}` });
+        }
+        function showJoinEntry() { document.getElementById('start-page').style.display = 'none'; document.getElementById('join-entry-page').style.display = 'block'; }
+        function joinByCode() {
+            playerName = document.getElementById('player-name-input').value.trim();
+            currentRoom = document.getElementById('room-code-input').value.trim().toUpperCase();
+            if(!playerName || !currentRoom) return alert("Enter Name & Code");
+            socket = io(); setupSocketListeners();
+            socket.emit('join-room', { room: currentRoom, name: playerName, avatar: `https://api.dicebear.com/7.x/adventurer/svg?seed=${playerName}` });
+        }
+
+        // --- ONLINE MULTIPLAYER ---
+        function showOnlineMenu() {
+            playerName = document.getElementById('player-name-input').value.trim();
+            if(!playerName) return alert("Enter Name First");
+            document.getElementById('start-page').style.display = 'none'; document.getElementById('online-menu-page').style.display = 'block';
+        }
+        function showOnlineJoin() { document.getElementById('online-menu-page').style.display = 'none'; document.getElementById('online-join-page').style.display = 'block'; }
+        function initOnlineHost() {
+            socket = io(ONLINE_SERVER_URL); setupSocketListeners();
+            socket.emit('create-room', { name: playerName, avatar: `https://api.dicebear.com/7.x/adventurer/svg?seed=${playerName}` });
+        }
+        function joinOnlineByCode() {
+            const code = document.getElementById('online-room-code-input').value.trim().toUpperCase();
+            if(!code) return alert("Enter Code");
+            socket = io(ONLINE_SERVER_URL); setupSocketListeners();
+            socket.emit('join-room', { room: code, name: playerName, avatar: `https://api.dicebear.com/7.x/adventurer/svg?seed=${playerName}` });
+        }
+
+        function setupSocketListeners() {
+            socket.on('connect_error', () => { alert("Server Connection Failed!"); location.reload(); });
+            socket.on('room-created', data => {
+                currentRoom = data.room; document.getElementById('room-code-display').innerText = currentRoom;
+                document.querySelectorAll('#start-page, #online-menu-page').forEach(p => p.style.display = 'none');
+                document.getElementById('lobby-page').style.display = 'block'; document.getElementById('host-controls').style.display = 'block';
+                document.getElementById('qrcode').innerHTML = ''; new QRCode(document.getElementById("qrcode"), { text: currentRoom, width: 128, height: 128 });
+            });
+            socket.on('players-update', players => {
+                livePlayers = players; updateLiveRankUI();
+                document.getElementById('lobby-players').innerHTML = players.map(p => `<img src="${p.avatar}" style="width:40px; border-radius:50%; border:2px solid cyan;">`).join('');
+            });
+            socket.on('game-start', () => startQuiz('multi'));
+            socket.on('rank-update', players => { livePlayers = players; updateLiveRankUI(); });
+            socket.on('final-board', players => { livePlayers = players; renderLeaderboard(players); });
+            socket.on('error-msg', msg => { alert(msg); location.reload(); });
+        }
+        function startMultiplayerGame() { socket.emit('start-game', currentRoom); }
+        function reviewQuiz() { isReviewMode = true; document.getElementById('result-page').style.display = 'none'; document.getElementById('quiz-page').style.display = 'block'; showQuestion(0); }
+    </script>
+</body>
+</html>
