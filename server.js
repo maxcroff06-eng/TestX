@@ -1,28 +1,26 @@
-const express = require("express"); // Line 1: Express ko import karna
+const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
 const path = require("path");
 
-const app = express(); // Line 5: 'app' ko define karna (Ye line missing thi)
+const app = express();
 const server = http.createServer(app);
 
 const io = new Server(server, {
     cors: {
-        origin: "*"
+        origin: "*",
+        methods: ["GET", "POST"]
     }
 });
 
-// HTML serve karne ke liye - index.html 'public' folder mein honi chahiye
 app.use(express.static("public"));
 
 app.get("/", (req, res) => {
     res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
-// Game Data Storage
 let rooms = {};
 
-// 6-digit room code banane ke liye
 function createCode() {
     return Math.random().toString(36).substring(2, 8).toUpperCase();
 }
@@ -30,27 +28,22 @@ function createCode() {
 io.on("connection", (socket) => {
     console.log("User connected:", socket.id);
 
-    // Room Create Karna
     socket.on("create-room", (data) => {
         let room = createCode();
-        rooms[room] = {
-            host: socket.id,
-            players: []
-        };
+        rooms[room] = { host: socket.id, players: [] };
         rooms[room].players.push({
             id: socket.id,
             name: data.name,
             avatar: data.avatar,
-            correct: 0,
             score: 0,
             totalTime: 0
         });
         socket.join(room);
         socket.emit("room-created", { room: room });
         io.to(room).emit("players-update", rooms[room].players);
+        console.log("Room Created:", room);
     });
 
-    // Room Join Karna
     socket.on("join-room", (data) => {
         let room = data.room;
         if (!rooms[room]) {
@@ -62,7 +55,6 @@ io.on("connection", (socket) => {
             id: socket.id,
             name: data.name,
             avatar: data.avatar,
-            correct: 0,
             score: 0,
             totalTime: 0
         });
@@ -79,20 +71,14 @@ io.on("connection", (socket) => {
         let player = rooms[room].players.find(p => p.id === socket.id);
         if (player) {
             player.score = data.score;
-            player.correct = data.correctAnswers;
             player.totalTime = data.totalTime;
-            rooms[room].players.sort((a, b) => {
-                if (b.score !== a.score) return b.score - a.score;
-                return a.totalTime - b.totalTime;
-            });
+            rooms[room].players.sort((a, b) => b.score - a.score || a.totalTime - b.totalTime);
             io.to(room).emit("rank-update", rooms[room].players);
         }
     });
 
     socket.on("finish-game", (room) => {
-        if (rooms[room]) {
-            io.to(room).emit("final-board", rooms[room].players);
-        }
+        if (rooms[room]) io.to(room).emit("final-board", rooms[room].players);
     });
 
     socket.on("disconnect", () => {
@@ -104,6 +90,7 @@ io.on("connection", (socket) => {
                 io.to(room).emit("players-update", rooms[room].players);
             }
         }
+        console.log("User disconnected");
     });
 });
 
